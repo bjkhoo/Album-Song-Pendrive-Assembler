@@ -1,0 +1,19 @@
+# Don't commit MP3 files to git (too large)
+*.mp3
+
+# Executables (auto-built by GitHub Actions, download from Releases)
+*.exe
+album_copier_mac
+
+# Python cache
+__pycache__/
+*.pyc
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# OS files
+.DS_Store
+Thumbs.db

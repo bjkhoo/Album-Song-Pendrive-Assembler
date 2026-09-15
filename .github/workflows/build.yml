@@ -1,0 +1,95 @@
+﻿name: Build Executables
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            output_name: album_copier.exe
+          - os: macos-latest
+            output_name: album_copier_mac
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build executable
+        run: pyinstaller --onefile --console --clean --name ${{ matrix.output_name }} album_copier.py
+
+      - name: Make binary executable (Mac)
+        if: runner.os == 'macOS'
+        run: chmod +x dist/album_copier_mac
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.output_name }}
+          path: dist/${{ matrix.output_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Windows exe
+        uses: actions/download-artifact@v4
+        with:
+          name: album_copier.exe
+          path: ./release/
+
+      - name: Download Mac binary
+        uses: actions/download-artifact@v4
+        with:
+          name: album_copier_mac
+          path: ./release/
+
+      - name: Create ZIP archives
+        run: |
+          cd ./release
+          chmod +x album_copier_mac
+          zip album_copier_windows.zip album_copier.exe
+          zip album_copier_mac.zip album_copier_mac
+
+      - name: Create or update Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest Build"
+          body: |
+            ## Download
+
+            ### 🪟 Windows
+            - **[Direct Download] `album_copier.exe`** — Direct executable
+            - **[ZIP Archive] `album_copier_windows.zip`** — Use this if your browser blocks direct `.exe` downloads
+
+            ### 🍎 Mac
+            - **[Direct Download] `album_copier_mac`**
+            - **[ZIP Archive] `album_copier_mac.zip`**
+
+            ---
+            Place the file next to your `album_source/` folder containing the 10 MP3 files, then run it.
+          files: |
+            ./release/album_copier.exe
+            ./release/album_copier_windows.zip
+            ./release/album_copier_mac
+            ./release/album_copier_mac.zip
+          make_latest: true
+          prerelease: false
+          draft: false
