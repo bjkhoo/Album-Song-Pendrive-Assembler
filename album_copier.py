@@ -468,6 +468,16 @@ def print_header():
     print()
 
 
+def pause_and_exit(code=1):
+    """Wait for user keypress before exiting so console window doesn't close immediately (prevent 闪退)."""
+    try:
+        print()
+        input("  👉 按回车键退出 (Press Enter to exit)... ")
+    except Exception:
+        pass
+    sys.exit(code)
+
+
 def main():
     print_header()
 
@@ -476,23 +486,26 @@ def main():
     source_dir = os.path.join(script_dir, SOURCE_FOLDER)
 
     if not os.path.isdir(source_dir):
-        print(f"  ❌ Source folder not found: {source_dir}")
-        print(f"     Please create a '{SOURCE_FOLDER}' folder next to this script")
-        print(f"     and place the MP3 files inside it.")
-        print(f"     See PREPARATION.txt for details.")
-        sys.exit(1)
+        print(f"  ❌ 找不到歌曲文件夹 (Folder not found):")
+        print(f"     {source_dir}")
+        print()
+        print(f"  💡 解决方法 (How to fix):")
+        print(f"     1. 请将包含 10 首 MP3 歌曲的 '{SOURCE_FOLDER}' 文件夹")
+        print(f"        放在和此程序 (album_copier.exe) 【相同的目录下】！")
+        print(f"     2. 如果是从 ZIP 下载，请先【右键 -> 全部解压缩】，不要直接在压缩包内打开。")
+        print(f"     (Please place the '{SOURCE_FOLDER}' folder next to this app)")
+        pause_and_exit(1)
 
     # --- Verify all songs exist in source ---
     missing = [s for s in SONG_LIST if not os.path.isfile(os.path.join(source_dir, s))]
 
     if missing:
-        print(f"  ❌ ERROR: {len(missing)} song(s) missing from '{SOURCE_FOLDER}':")
+        print(f"  ❌ 文件夹 '{SOURCE_FOLDER}' 中缺少以下 {len(missing)} 首歌曲:")
         for m in missing:
             print(f"     - {m}")
         print()
-        print(f"  Please place all {len(SONG_LIST)} MP3 files in the '{SOURCE_FOLDER}' folder before running.")
-        print("  See PREPARATION.txt for details.")
-        sys.exit(1)
+        print(f"  请确保所有 {len(SONG_LIST)} 首 MP3 歌曲名称完全一致并放在 '{SOURCE_FOLDER}' 文件夹内。")
+        pause_and_exit(1)
 
     print(f"  ✅ All {len(SONG_LIST)} songs verified in '{SOURCE_FOLDER}'. Ready!\n")
 
@@ -643,8 +656,8 @@ if __name__ == "__main__":
         print("\n\n  👋 Interrupted. Goodbye!")
         sys.exit(0)
     except Exception as e:
-        print(f"\n  ❌ Unexpected error: {e}")
+        print(f"\n  ❌ 运行出错 (Unexpected error): {e}")
         import traceback
         traceback.print_exc()
-        sys.exit(1)
+        pause_and_exit(1)
 
