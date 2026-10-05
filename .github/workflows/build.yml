@@ -3,6 +3,7 @@ name: Build Executables
 on:
   push:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -29,7 +30,7 @@ jobs:
         run: pip install pyinstaller
 
       - name: Build executable
-        run: pyinstaller --onefile --console --clean --name ${{ matrix.output_name }} album_copier.py
+        run: pyinstaller --onefile --noupx --console --clean --name ${{ matrix.output_name }} album_copier.py
 
       - name: Make binary executable (Mac)
         if: runner.os == 'macOS'
