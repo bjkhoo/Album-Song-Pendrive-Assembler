@@ -1,4 +1,4 @@
-﻿# Album Song Pendrive Assembler
+# Album Song Pendrive Assembler
 
 Bulk-copy album songs onto USB pen drives for mass distribution.
 
@@ -19,15 +19,16 @@ Built for the album **《稻、树林和风》原创专辑** ("The Paddy Fields,
 
 ## 🔄 What This Program Does (Step-by-Step)
 
-When you run the assembler, it follows this automated 7-step process:
+When you run the assembler, it follows this automated process:
 
 1. **🔍 Song Verification**: Checks that all 10 album MP3 files are present in `album_source/` with exact names. If any file is missing, it will alert you and stop.
-2. **🔌 USB Detection**: Automatically scans and detects connected removable USB pen drives (displays drive letter, current name, and available free space).
-3. **⚠️ Wipe & Clean Drive**: Upon pressing Enter, completely erases all old files, factory junk, and hidden trash on the pen drive to ensure a clean, virus-free drive.
-4. **🏷️ Rename Drive**: Renames the USB volume label to **`PDW Album`**.
-5. **🎵 Copy & Size Verification**: Copies all 10 MP3 files directly to the drive root (not inside subfolders, ensuring instant plug-and-play compatibility on car audio players and Bluetooth speakers) and verifies that every file size matches.
-6. **⏏️ Safe Eject**: Automatically ejects the drive safely through OS commands so you can immediately unplug it without data corruption.
-7. **🔁 Continuous Loop**: Shows a live session total count and waits for the next pen drive. Press **Enter** for the next drive, or **`Q`** to quit.
+2. **🔌 USB Detection (Single or Multi-Drive)**: Automatically scans and detects all connected removable USB pen drives (supports external multi-port USB hubs with 4, 8, 10+ drives). Displays drive letters, current labels, and available free space.
+3. **⚡ Simultaneous Parallel Processing**: Press **Enter** once to process **all connected pen drives simultaneously in parallel** (or choose specific drive numbers).
+4. **⚠️ Wipe & Clean Drive**: Erases all old files, factory junk, and hidden trash on each pen drive to ensure clean, virus-free drives.
+5. **🏷️ Rename Drive**: Renames each USB volume label to **`PDW Album`**.
+6. **🎵 Copy & Size Verification**: Copies all 10 MP3 files directly to the root of each drive simultaneously and verifies that every file size matches.
+7. **⏏️ Safe Eject**: Automatically ejects all completed drives safely so you can immediately unplug them.
+8. **🔁 Continuous Batch Loop**: Shows a batch results summary and live overall total, then waits for the next batch of pen drives.
 
 ---
 
@@ -75,13 +76,14 @@ Album-Assembler/
   * *First time on Mac*: Right-Click (or Control-Click) → **Open** → Click **Open** in the prompt.
   * *If permission denied*: Open Terminal in that folder and run `chmod +x album_copier_mac`.
 
-### 4. Mass Copying Workflow
-1. Plug in a USB pen drive.
-2. Check the drive letter/name displayed on screen.
-3. Press **Enter** to wipe and copy the album songs.
-4. When you see `⏏️ Safely ejecting... ✅`, unplug the drive.
-5. Plug in the next pen drive and press **Enter**.
-6. Type **`Q`** when you are finished!
+### 4. Mass Copying Workflow (Supports Multi-Port USB Hubs!)
+1. Plug in one or multiple USB pen drives (e.g. into your external multi-port USB hub).
+2. The program scans and lists all detected drives (e.g. `[1] E:\`, `[2] F:\`, `[3] G:\`).
+3. Press **Enter** to wipe and copy to **all drives simultaneously in parallel** (or type `1,2` for specific drives).
+4. Watch real-time progress for each drive marked with its drive letter.
+5. When you see `⏏️ Safely ejected... ✅`, unplug the finished drives.
+6. Plug in the next batch of pen drives and press **Enter**.
+7. Type **`Q`** when you are finished!
 
 ---
 

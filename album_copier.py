@@ -19,6 +19,8 @@ import shutil
 import subprocess
 import sys
 import platform
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Ensure UTF-8 output encoding for emojis and Chinese characters on Windows
 if sys.platform == "win32":
@@ -50,6 +52,18 @@ SONG_LIST = [
     "09 拥抱无常.mp3",
     "10 六时·尔时.mp3",
 ]
+
+# Thread safety lock for console output
+_print_lock = threading.Lock()
+
+
+def log(msg="", prefix=None):
+    """Thread-safe logging helper with optional drive prefix."""
+    with _print_lock:
+        if prefix:
+            print(f"  [{prefix}] {msg}")
+        else:
+            print(f"  {msg}")
 
 # ============================================================
 #  HELPER FUNCTIONS
@@ -196,13 +210,14 @@ def get_drive_info(drive):
 #  PEN DRIVE OPERATIONS
 # ============================================================
 
-def rename_drive(drive, new_label):
+def rename_drive(drive, new_label, prefix=None):
     """
     Rename the pen drive to the album label.
     Windows: uses PowerShell Set-Volume
     macOS:   uses diskutil rename
     """
     system = platform.system()
+    pfx = prefix or drive.rstrip("\\").rstrip("/")
 
     try:
         if system == "Windows":
@@ -216,7 +231,7 @@ def rename_drive(drive, new_label):
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
-                print(f"  📝 Renamed drive to '{new_label}'... ✅")
+                log(f"📝 Renamed drive to '{new_label}'... ✅", prefix=pfx)
             else:
                 # Fallback: try using cmd label command
                 fb_result = subprocess.run(
@@ -224,11 +239,11 @@ def rename_drive(drive, new_label):
                     capture_output=True, text=True, timeout=10
                 )
                 if fb_result.returncode == 0:
-                    print(f"  📝 Renamed drive to '{new_label}'... ✅")
+                    log(f"📝 Renamed drive to '{new_label}'... ✅", prefix=pfx)
                 else:
                     err_msg = result.stderr.strip() or fb_result.stderr.strip() or "Permission or filesystem limitation"
-                    print(f"  ⚠️ Could not rename drive: {err_msg}")
-                    print(f"     (Continuing with copy anyway)")
+                    log(f"⚠️ Could not rename drive: {err_msg}", prefix=pfx)
+                    log(f"   (Continuing with copy anyway)", prefix=pfx)
 
         elif system == "Darwin":
             result = subprocess.run(
@@ -236,24 +251,26 @@ def rename_drive(drive, new_label):
                 capture_output=True, text=True, timeout=10
             )
             if result.returncode == 0:
-                print(f"  📝 Renamed drive to '{new_label}'... ✅")
+                log(f"📝 Renamed drive to '{new_label}'... ✅", prefix=pfx)
             else:
                 err_msg = result.stderr.strip() or "Drive may be locked or busy"
-                print(f"  ⚠️ Could not rename drive: {err_msg}")
-                print(f"     (Continuing with copy anyway)")
+                log(f"⚠️ Could not rename drive: {err_msg}", prefix=pfx)
+                log(f"   (Continuing with copy anyway)", prefix=pfx)
 
     except Exception as e:
-        print(f"  ⚠️ Could not rename drive: {e}")
-        print(f"     (Continuing with copy anyway)")
+        log(f"⚠️ Could not rename drive: {e}", prefix=pfx)
+        log(f"   (Continuing with copy anyway)", prefix=pfx)
 
 
-def safe_eject(drive):
+def safe_eject(drive, prefix=None):
     """
     Safely eject the pen drive.
     Windows: uses Shell.Application COM object via PowerShell
     macOS:   uses diskutil eject
+    Returns True if successfully ejected, False otherwise.
     """
     system = platform.system()
+    pfx = prefix or drive.rstrip("\\").rstrip("/")
 
     try:
         if system == "Windows":
@@ -268,9 +285,11 @@ def safe_eject(drive):
                 capture_output=True, text=True, timeout=15
             )
             if result.returncode == 0:
-                print(f"  ⏏️ Safely ejecting {drive}... ✅")
+                log(f"⏏️ Safely ejected {drive}... ✅", prefix=pfx)
+                return True
             else:
-                print(f"  ⚠️ Could not auto-eject. Please eject '{drive}' manually.")
+                log(f"⚠️ Could not auto-eject. Please eject '{drive}' manually.", prefix=pfx)
+                return False
 
         elif system == "Darwin":
             result = subprocess.run(
@@ -278,28 +297,33 @@ def safe_eject(drive):
                 capture_output=True, text=True, timeout=15
             )
             if result.returncode == 0:
-                print(f"  ⏏️ Safely ejecting {drive}... ✅")
+                log(f"⏏️ Safely ejected {drive}... ✅", prefix=pfx)
+                return True
             else:
-                print(f"  ⚠️ Could not auto-eject: {result.stderr.strip()}")
-                print(f"      Please eject '{drive}' manually.")
+                log(f"⚠️ Could not auto-eject: {result.stderr.strip()}", prefix=pfx)
+                log(f"   Please eject '{drive}' manually.", prefix=pfx)
+                return False
 
     except subprocess.TimeoutExpired:
-        print(f"  ⚠️ Eject timed out. Please eject '{drive}' manually.")
+        log(f"⚠️ Eject timed out. Please eject '{drive}' manually.", prefix=pfx)
+        return False
     except Exception as e:
-        print(f"  ⚠️ Could not auto-eject: {e}")
-        print(f"      Please eject '{drive}' manually.")
+        log(f"⚠️ Could not auto-eject: {e}", prefix=pfx)
+        log(f"   Please eject '{drive}' manually.", prefix=pfx)
+        return False
 
 
 # ============================================================
 #  DRIVE CLEANING (WIPE OLD FILES)
 # ============================================================
 
-def clean_drive(drive):
+def clean_drive(drive, prefix=None):
     """
     Remove all existing files and directories on the pen drive
     to start 100% fresh and clean (prevents viruses & factory bloatware).
     """
-    print(f"  🧹 Wiping all existing files on {drive}...")
+    pfx = prefix or drive.rstrip("\\").rstrip("/")
+    log(f"🧹 Wiping all existing files on {drive}...", prefix=pfx)
     system_folders = {
         "system volume information",
         "$recycle.bin",
@@ -322,19 +346,21 @@ def clean_drive(drive):
                     cleaned_count += 1
             except Exception:
                 pass
-        print(f"  ✨ Drive {drive} wiped clean! ({cleaned_count} old items removed)")
+        log(f"✨ Drive {drive} wiped clean! ({cleaned_count} old items removed)", prefix=pfx)
     except Exception as e:
-        print(f"  ⚠️ Notice during drive wipe: {e}")
+        log(f"⚠️ Notice during drive wipe: {e}", prefix=pfx)
+
 
 # ============================================================
 #  FILE COPY
 # ============================================================
 
-def copy_songs_to_drive(source_dir, drive, song_list):
+def copy_songs_to_drive(source_dir, drive, song_list, prefix=None):
     """
     Copy all songs from source_dir to the root of the pen drive.
     Returns (success_count, fail_count, failed_files).
     """
+    pfx = prefix or drive.rstrip("\\").rstrip("/")
     success_count = 0
     fail_count = 0
     failed_files = []
@@ -346,7 +372,7 @@ def copy_songs_to_drive(source_dir, drive, song_list):
 
         try:
             if not os.path.isfile(source_path):
-                print(f"  [{i:>2}/{total}] ❌ {filename} — File not found in source folder")
+                log(f"[{i:>2}/{total}] ❌ {filename} — File not found in source folder", prefix=pfx)
                 fail_count += 1
                 failed_files.append(filename)
                 continue
@@ -359,40 +385,70 @@ def copy_songs_to_drive(source_dir, drive, song_list):
             # Verify: check the destination file size matches
             dest_size = os.path.getsize(dest_path)
             if dest_size != source_size:
-                print(f"  [{i:>2}/{total}] ⚠️ {filename} — Size mismatch! (expected {format_size(source_size)}, got {format_size(dest_size)})")
+                log(f"[{i:>2}/{total}] ⚠️ {filename} — Size mismatch! (expected {format_size(source_size)}, got {format_size(dest_size)})", prefix=pfx)
                 fail_count += 1
                 failed_files.append(filename)
             else:
-                print(f"  [{i:>2}/{total}] ✅ {filename} ({format_size(source_size)})")
+                log(f"[{i:>2}/{total}] ✅ {filename} ({format_size(source_size)})", prefix=pfx)
                 success_count += 1
 
         except PermissionError:
-            print(f"  [{i:>2}/{total}] ❌ {filename} — Permission denied (drive may be write-protected)")
+            log(f"[{i:>2}/{total}] ❌ {filename} — Permission denied (drive may be write-protected)", prefix=pfx)
             fail_count += 1
             failed_files.append(filename)
         except OSError as e:
             if "No space left" in str(e) or "not enough space" in str(e).lower():
-                print(f"  [{i:>2}/{total}] ❌ {filename} — No space left on drive!")
+                log(f"[{i:>2}/{total}] ❌ {filename} — No space left on drive!", prefix=pfx)
                 fail_count += 1
                 failed_files.append(filename)
-                print(f"\n  🛑 Drive full — stopping copy for this drive.")
+                log("🛑 Drive full — stopping copy for this drive.", prefix=pfx)
                 break
             elif "device" in str(e).lower() or "removed" in str(e).lower():
-                print(f"  [{i:>2}/{total}] ❌ {filename} — Drive disconnected!")
+                log(f"[{i:>2}/{total}] ❌ {filename} — Drive disconnected!", prefix=pfx)
                 fail_count += 1
                 failed_files.append(filename)
-                print(f"\n  🛑 Drive disconnected — stopping copy for this drive.")
+                log("🛑 Drive disconnected — stopping copy for this drive.", prefix=pfx)
                 break
             else:
-                print(f"  [{i:>2}/{total}] ❌ {filename} — Error: {e}")
+                log(f"[{i:>2}/{total}] ❌ {filename} — Error: {e}", prefix=pfx)
                 fail_count += 1
                 failed_files.append(filename)
         except Exception as e:
-            print(f"  [{i:>2}/{total}] ❌ {filename} — Unexpected error: {e}")
+            log(f"[{i:>2}/{total}] ❌ {filename} — Unexpected error: {e}", prefix=pfx)
             fail_count += 1
             failed_files.append(filename)
 
     return success_count, fail_count, failed_files
+
+
+def process_single_drive(drive, source_dir, song_list):
+    """
+    Wipes, renames, copies songs, and safely ejects a single pen drive.
+    Runs concurrently in its own thread.
+    Returns a result dict.
+    """
+    pfx = drive.rstrip("\\").rstrip("/")
+    log(f"🚀 Starting process on {drive}...", prefix=pfx)
+
+    # 1. Wipe/Clean drive
+    clean_drive(drive, prefix=pfx)
+
+    # 2. Rename drive
+    rename_drive(drive, DRIVE_LABEL, prefix=pfx)
+
+    # 3. Copy songs
+    success, failed, failed_files = copy_songs_to_drive(source_dir, drive, song_list, prefix=pfx)
+
+    # 4. Safe eject
+    ejected = safe_eject(drive, prefix=pfx)
+
+    return {
+        "drive": drive,
+        "success": success,
+        "failed": failed,
+        "failed_files": failed_files,
+        "ejected": ejected,
+    }
 
 
 # ============================================================
@@ -404,11 +460,11 @@ def print_header():
     computer = get_computer_name()
     os_name = get_os_name()
     print()
-    print("=" * 50)
+    print("=" * 60)
     print(f"  {ALBUM_NAME}")
-    print(f"  Album Song Pendrive Assembler")
+    print(f"  Album Song Pendrive Assembler (Multi-Drive Parallel Mode)")
     print(f"  Computer: {computer} | OS: {os_name}")
-    print("=" * 50)
+    print("=" * 60)
     print()
 
 
@@ -445,7 +501,7 @@ def main():
     total_failed = 0
 
     while True:
-        print("─" * 50)
+        print("─" * 60)
 
         # --- Scan for pen drives ---
         print("  🔍 Scanning for pen drives...")
@@ -453,7 +509,7 @@ def main():
 
         while not pen_drives:
             print("  💡 No pen drives found.")
-            user_input = input("     Plug in a pen drive and press Enter (Q to quit): ").strip().upper()
+            user_input = input("     Plug in pen drive(s) and press Enter (Q to quit): ").strip().upper()
             if user_input == "Q":
                 break
             print("  🔍 Scanning again...")
@@ -462,66 +518,122 @@ def main():
         if not pen_drives:
             break
 
-        # --- Process each detected pen drive ---
-        for drive in pen_drives:
-            label, free_space = get_drive_info(drive)
-            print(f"  📌 Found pen drive: {drive} (Name: '{label}', Free: {format_size(free_space)})")
-            print(f"  ⚠️ CAUTION: Pressing Enter will ERASE ALL DATA on {drive} to make it brand new!")
-            print()
+        count = len(pen_drives)
+        drive_infos = []
+        for d in pen_drives:
+            lbl, free = get_drive_info(d)
+            drive_infos.append((d, lbl, free))
 
-            user_input = input(f"  Press Enter to WIPE & COPY to {drive} (S to skip, Q to quit): ").strip().upper()
-            if user_input == "Q":
-                print(f"\n  📊 Final total: {total_success} pen drives completed ({total_failed} failed)")
-                return
-            if user_input == "S":
-                print(f"  ⏭️ Skipped {drive}")
+        print(f"\n  📌 Detected {count} pen drive(s):")
+        for idx, (d, lbl, free) in enumerate(drive_infos, 1):
+            print(f"     [{idx}] {d:<6} (Label: '{lbl}', Free: {format_size(free)})")
+
+        print()
+        print("  ⚠️ CAUTION: Processing will ERASE ALL EXISTING DATA on selected drives!")
+        print()
+
+        if count == 1:
+            prompt_text = f"  Press Enter to WIPE & COPY to {pen_drives[0]} (S to skip/rescan, Q to quit): "
+        else:
+            prompt_text = (
+                f"  Press Enter to WIPE & COPY to ALL {count} drives SIMULTANEOUSLY\n"
+                f"  (or enter numbers e.g. 1,2 | S to skip/rescan | Q to quit): "
+            )
+
+        user_input = input(prompt_text).strip()
+        cmd = user_input.upper()
+
+        if cmd == "Q":
+            break
+        if cmd == "S":
+            print("  ⏭️ Rescanning drives...")
+            continue
+
+        selected_drives = []
+        if not user_input:
+            selected_drives = list(pen_drives)
+        else:
+            try:
+                parts = [p.strip() for p in user_input.replace(",", " ").split()]
+                indices = [int(p) for p in parts]
+                for idx in indices:
+                    if 1 <= idx <= count:
+                        selected_drives.append(pen_drives[idx - 1])
+                    else:
+                        print(f"  ⚠️ Invalid drive number: {idx}")
+                selected_drives = list(dict.fromkeys(selected_drives))
+            except ValueError:
+                print(f"  ⚠️ Invalid input '{user_input}'. Skipping this round.")
                 continue
 
-            print()
+        if not selected_drives:
+            print("  ⚠️ No valid drives selected.")
+            continue
 
-            # --- Wipe/Clean drive ---
-            clean_drive(drive)
+        print()
+        print(f"  ⚡ Running simultaneous copy for {len(selected_drives)} drive(s): {', '.join(selected_drives)}")
+        print("─" * 60)
 
-            # --- Rename drive ---
-            rename_drive(drive, DRIVE_LABEL)
+        # Process all selected drives in parallel
+        batch_results = []
+        with ThreadPoolExecutor(max_workers=len(selected_drives)) as executor:
+            future_to_drive = {
+                executor.submit(process_single_drive, drive, source_dir, SONG_LIST): drive
+                for drive in selected_drives
+            }
+            for future in as_completed(future_to_drive):
+                drv = future_to_drive[future]
+                try:
+                    res = future.result()
+                    batch_results.append(res)
+                except Exception as exc:
+                    batch_results.append({
+                        "drive": drv,
+                        "success": 0,
+                        "failed": len(SONG_LIST),
+                        "failed_files": SONG_LIST,
+                        "ejected": False,
+                        "error": str(exc),
+                    })
 
-            # --- Copy songs ---
-            print()
-            success, failed, failed_files = copy_songs_to_drive(source_dir, drive, SONG_LIST)
-            print()
-
-            if failed == 0:
-                print(f"  ✅ SUCCESS — {success}/{len(SONG_LIST)} songs copied to {drive}")
+        # --- Batch Summary ---
+        print()
+        print("  " + "─" * 54)
+        print("  📊 BATCH RESULTS:")
+        for res in sorted(batch_results, key=lambda x: x["drive"]):
+            drv = res["drive"]
+            succ = res["success"]
+            fail = res["failed"]
+            ej = "⏏️ Ejected" if res.get("ejected") else "⚠️ Not ejected"
+            if fail == 0:
+                print(f"     ✅ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied ({ej})")
                 total_success += 1
             else:
-                print(f"  ⚠️ PARTIAL — {success}/{len(SONG_LIST)} songs copied, {failed} failed")
-                if failed_files:
-                    print(f"     Failed: {', '.join(failed_files)}")
+                print(f"     ⚠️ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied, {fail} failed ({ej})")
+                if res.get("failed_files"):
+                    print(f"        Failed files: {', '.join(res['failed_files'])}")
                 total_failed += 1
 
-            # --- Safe eject ---
-            safe_eject(drive)
+        print(f"\n  📈 Overall Total: {total_success} pen drives completed", end="")
+        if total_failed > 0:
+            print(f" ({total_failed} failed)", end="")
+        print("\n  " + "─" * 54)
 
-            print(f"\n  📊 Session total: {total_success} pen drives completed", end="")
-            if total_failed > 0:
-                print(f" ({total_failed} failed)", end="")
-            print()
-
-        # --- Prompt for next round ---
+        # --- Prompt for next batch ---
         print()
-        user_input = input("  Plug in next pen drive, press Enter (Q to quit): ").strip().upper()
+        user_input = input("  Unplug finished drives. Plug in next batch and press Enter (Q to quit): ").strip().upper()
         if user_input == "Q":
             break
 
     # --- Final summary ---
     print()
-    print("=" * 50)
-    print(f"  🏁 DONE!")
-    print(f"  ✅ {total_success} pen drives completed successfully")
+    print("=" * 60)
+    print(f"  🏁 ALL DONE!")
+    print(f"  ✅ {total_success} pen drive(s) completed successfully")
     if total_failed > 0:
-        print(f"  ❌ {total_failed} pen drives had errors")
-    print("=" * 50)
-
+        print(f"  ❌ {total_failed} pen drive(s) had errors")
+    print("=" * 60)
+    print()
 
 
 if __name__ == "__main__":
@@ -535,3 +647,4 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
