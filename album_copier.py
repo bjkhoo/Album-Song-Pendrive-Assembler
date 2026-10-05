@@ -60,7 +60,7 @@ SUPPORTED_AUDIO_EXTS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
 def resolve_album_songs(source_dir):
     """
     Find matching audio files in source_dir for each track title.
-    Accepts .mp3, .wav, .flac, .m4a, etc. as long as the song name matches.
+    Requires exact base name match (ignores file extension: .mp3, .wav, .flac, etc.).
     Returns (resolved_song_filenames, missing_track_titles).
     """
     if not os.path.isdir(source_dir):
@@ -72,19 +72,12 @@ def resolve_album_songs(source_dir):
 
     for title in SONG_LIST:
         matched_file = None
-        # 1. Exact base name match
+        # Exact base name match (extension can be anything: .mp3, .wav, .flac, etc.)
         for f in sorted(files):
             base, ext = os.path.splitext(f)
             if base.strip().lower() == title.strip().lower():
                 matched_file = f
                 break
-        # 2. Prefix match (e.g. if title has slightly different suffix)
-        if not matched_file:
-            for f in sorted(files):
-                base, ext = os.path.splitext(f)
-                if base.strip().lower().startswith(title.strip().lower()):
-                    matched_file = f
-                    break
 
         if matched_file:
             resolved.append(matched_file)
@@ -463,8 +456,8 @@ def copy_songs_to_drive(source_dir, drive, song_list, prefix=None):
 
 def process_single_drive(drive, source_dir, song_list):
     """
-    Wipes, renames, copies songs, and safely ejects a single pen drive.
-    Runs concurrently in its own thread.
+    Wipes, renames, and copies songs to a single pen drive.
+    Does NOT eject here — all drives are safely ejected together at the end.
     Returns a result dict.
     """
     pfx = drive.rstrip("\\").rstrip("/")
@@ -479,15 +472,17 @@ def process_single_drive(drive, source_dir, song_list):
     # 3. Copy songs
     success, failed, failed_files = copy_songs_to_drive(source_dir, drive, song_list, prefix=pfx)
 
-    # 4. Safe eject
-    ejected = safe_eject(drive, prefix=pfx)
+    if failed == 0:
+        log(f"✅ All {success}/{len(song_list)} songs verified! (⏳ Waiting for other drives to finish...)", prefix=pfx)
+    else:
+        log(f"⚠️ Copied {success}/{len(song_list)} songs, {failed} failed. (⏳ Waiting for other drives...)", prefix=pfx)
 
     return {
         "drive": drive,
         "success": success,
         "failed": failed,
         "failed_files": failed_files,
-        "ejected": ejected,
+        "ejected": False,
     }
 
 
@@ -528,20 +523,20 @@ def main():
             print()
             continue
 
-        missing = [s for s in SONG_LIST if not os.path.isfile(os.path.join(source_dir, s))]
-        if missing:
-            print(f"  ⚠️ {len(missing)} song(s) missing from '{SOURCE_FOLDER}':")
-            for m in missing:
+        resolved_songs, missing_tracks = resolve_album_songs(source_dir)
+        if missing_tracks:
+            print(f"  ⚠️ {len(missing_tracks)} song(s) missing from '{SOURCE_FOLDER}':")
+            for m in missing_tracks:
                 print(f"     - {m}")
             print()
-            print(f"     Please place all {len(SONG_LIST)} MP3 files in the '{SOURCE_FOLDER}' folder.")
+            print(f"     (Names must match the track titles exactly. Any format is accepted: .mp3, .wav, .flac, etc.)")
             user_input = input("     Press Enter to scan again (Q to quit): ").strip().upper()
             if user_input == "Q":
                 return
             print()
             continue
 
-        print(f"  ✅ All {len(SONG_LIST)} songs verified in '{SOURCE_FOLDER}'. Ready!\n")
+        print(f"  ✅ All {len(resolved_songs)} songs verified in '{SOURCE_FOLDER}'. Ready!\n")
         break
 
     # --- Main loop ---
@@ -626,7 +621,7 @@ def main():
         batch_results = []
         with ThreadPoolExecutor(max_workers=len(selected_drives)) as executor:
             future_to_drive = {
-                executor.submit(process_single_drive, drive, source_dir, SONG_LIST): drive
+                executor.submit(process_single_drive, drive, source_dir, resolved_songs): drive
                 for drive in selected_drives
             }
             for future in as_completed(future_to_drive):
@@ -638,34 +633,47 @@ def main():
                     batch_results.append({
                         "drive": drv,
                         "success": 0,
-                        "failed": len(SONG_LIST),
-                        "failed_files": SONG_LIST,
+                        "failed": len(resolved_songs),
+                        "failed_files": resolved_songs,
                         "ejected": False,
                         "error": str(exc),
                     })
 
+        # --- Synchronized Safe Eject: ALL DRIVES EJECTED TOGETHER ---
+        print()
+        print("  " + "═" * 58)
+        print("  ⏏️ ALL DRIVES FINISHED! Safely ejecting all drives together...")
+        print("  " + "═" * 58)
+
+        for res in sorted(batch_results, key=lambda x: x["drive"]):
+            drv = res["drive"]
+            ej = safe_eject(drv, prefix=drv.rstrip("\\").rstrip("/"))
+            res["ejected"] = ej
+
         # --- Batch Summary ---
         print()
-        print("  " + "─" * 54)
+        print("  " + "═" * 58)
         print("  📊 BATCH RESULTS:")
         for res in sorted(batch_results, key=lambda x: x["drive"]):
             drv = res["drive"]
             succ = res["success"]
             fail = res["failed"]
-            ej = "⏏️ Ejected" if res.get("ejected") else "⚠️ Not ejected"
+            ej = "⏏️ Ejected" if res.get("ejected") else "⚠️ Please eject manually"
             if fail == 0:
-                print(f"     ✅ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied ({ej})")
+                print(f"     ✅ {drv:<6} — {succ}/{len(resolved_songs)} songs copied ({ej})")
                 total_success += 1
             else:
-                print(f"     ⚠️ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied, {fail} failed ({ej})")
+                print(f"     ❌ {drv:<6} — {succ}/{len(resolved_songs)} copied, {fail} failed ({ej})")
                 if res.get("failed_files"):
                     print(f"        Failed files: {', '.join(res['failed_files'])}")
                 total_failed += 1
 
-        print(f"\n  📈 Overall Total: {total_success} pen drives completed", end="")
+        print()
+        print("  🎉 ALL DRIVES ARE READY & SAFE TO UNPLUG NOW!")
+        print(f"  📈 Session Total: {total_success} pen drive(s) completed", end="")
         if total_failed > 0:
             print(f" ({total_failed} failed)", end="")
-        print("\n  " + "─" * 54)
+        print("\n  " + "═" * 58)
 
         # --- Prompt for next batch ---
         print()
