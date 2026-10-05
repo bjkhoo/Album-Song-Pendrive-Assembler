@@ -40,18 +40,58 @@ ALBUM_NAME = "《稻、树林和风》原创专辑"
 DRIVE_LABEL = "PDW Album"
 SOURCE_FOLDER = "album_source"
 
+# Matches any audio extension
 SONG_LIST = [
-    "01 稻、树林和风.mp3",
-    "02 Thankfulness.mp3",
-    "03 满月.mp3",
-    "04 我苦我乐我转转念.mp3",
-    "05 含羞草的闪亮.mp3",
-    "06 初心.mp3",
-    "07 幸福答卷.mp3",
-    "08 蝴蝶的呢喃.mp3",
-    "09 拥抱无常.mp3",
-    "10 六时·尔时.mp3",
+    "01 稻、树林和风",
+    "02 Thankfulness",
+    "03 满月",
+    "04 我苦我乐我转转念",
+    "05 含羞草的闪亮",
+    "06 初心",
+    "07 幸福答卷",
+    "08 蝴蝶的呢喃",
+    "09 拥抱无常",
+    "10 六时·尔时",
 ]
+
+SUPPORTED_AUDIO_EXTS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
+
+
+def resolve_album_songs(source_dir):
+    """
+    Find matching audio files in source_dir for each track title.
+    Accepts .mp3, .wav, .flac, .m4a, etc. as long as the song name matches.
+    Returns (resolved_song_filenames, missing_track_titles).
+    """
+    if not os.path.isdir(source_dir):
+        return [], list(SONG_LIST)
+
+    files = [f for f in os.listdir(source_dir) if not f.startswith(".")]
+    resolved = []
+    missing = []
+
+    for title in SONG_LIST:
+        matched_file = None
+        # 1. Exact base name match
+        for f in sorted(files):
+            base, ext = os.path.splitext(f)
+            if base.strip().lower() == title.strip().lower():
+                matched_file = f
+                break
+        # 2. Prefix match (e.g. if title has slightly different suffix)
+        if not matched_file:
+            for f in sorted(files):
+                base, ext = os.path.splitext(f)
+                if base.strip().lower().startswith(title.strip().lower()):
+                    matched_file = f
+                    break
+
+        if matched_file:
+            resolved.append(matched_file)
+        else:
+            missing.append(title)
+
+    return resolved, missing
 
 # Thread safety lock for console output
 _print_lock = threading.Lock()
