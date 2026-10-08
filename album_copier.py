@@ -421,9 +421,55 @@ def copy_songs_to_drive(source_dir, drive, song_list, prefix=None):
     return success_count, fail_count, failed_files
 
 
+def verify_drive_contents(source_dir, drive, song_list, prefix=None):
+    """
+    Perform a complete post-copy audit directly on the pen drive.
+    Reads the drive to verify that all songs exist, are readable,
+    and their sizes match the source files before ejecting.
+    Returns (is_verified, missing_files, mismatched_files).
+    """
+    pfx = prefix or drive.rstrip("\\").rstrip("/")
+    log(f"🔍 Auditing drive contents: checking all {len(song_list)} files on {drive}...", prefix=pfx)
+
+    missing = []
+    mismatched = []
+
+    try:
+        drive_files = set(os.listdir(drive))
+    except Exception as e:
+        log(f"❌ Could not read drive directory: {e}", prefix=pfx)
+        return False, list(song_list), []
+
+    for filename in song_list:
+        dest_path = os.path.join(drive, filename)
+        source_path = os.path.join(source_dir, filename)
+
+        if filename not in drive_files or not os.path.isfile(dest_path):
+            missing.append(filename)
+            continue
+
+        try:
+            dest_size = os.path.getsize(dest_path)
+            source_size = os.path.getsize(source_path)
+            if dest_size != source_size or dest_size == 0:
+                mismatched.append(filename)
+        except Exception:
+            missing.append(filename)
+
+    if not missing and not mismatched:
+        log(f"🔍 Audit PASSED: all {len(song_list)} files confirmed present on {drive}! ✅", prefix=pfx)
+        return True, [], []
+    else:
+        if missing:
+            log(f"❌ Audit FAILED: {len(missing)} file(s) missing on {drive}: {', '.join(missing)}", prefix=pfx)
+        if mismatched:
+            log(f"⚠️ Audit FAILED: {len(mismatched)} file(s) size mismatch: {', '.join(mismatched)}", prefix=pfx)
+        return False, missing, mismatched
+
+
 def process_single_drive(drive, source_dir, song_list):
     """
-    Wipes, renames, and copies songs to a single pen drive.
+    Wipes, renames, copies songs, and verifies drive contents.
     Does NOT eject here — all drives are safely ejected together at the end.
     Returns a result dict.
     """
@@ -439,16 +485,26 @@ def process_single_drive(drive, source_dir, song_list):
     # 3. Copy songs
     success, failed, failed_files = copy_songs_to_drive(source_dir, drive, song_list, prefix=pfx)
 
-    if failed == 0:
-        log(f"✅ All {success}/{len(song_list)} songs verified! (⏳ Waiting for other drives to finish...)", prefix=pfx)
+    # 4. Post-copy audit: Read the drive to verify all 10 files actually exist on disk
+    is_verified, missing_audit, mismatch_audit = verify_drive_contents(source_dir, drive, song_list, prefix=pfx)
+
+    if not is_verified:
+        for f in missing_audit + mismatch_audit:
+            if f not in failed_files:
+                failed_files.append(f)
+                failed += 1
+
+    if failed == 0 and is_verified:
+        log(f"✅ All {success}/{len(song_list)} songs verified on {drive}! (⏳ Waiting for other drives to finish...)", prefix=pfx)
     else:
-        log(f"⚠️ Copied {success}/{len(song_list)} songs, {failed} failed. (⏳ Waiting for other drives...)", prefix=pfx)
+        log(f"⚠️ Copied {success}/{len(song_list)} songs, {failed} issue(s) on {drive}. (⏳ Waiting for other drives...)", prefix=pfx)
 
     return {
         "drive": drive,
-        "success": success,
+        "success": success if is_verified else max(0, len(song_list) - len(failed_files)),
         "failed": failed,
         "failed_files": failed_files,
+        "verified": is_verified,
         "ejected": False,
     }
 
@@ -626,13 +682,13 @@ def main():
             succ = res["success"]
             fail = res["failed"]
             ej = "⏏️ Ejected" if res.get("ejected") else "⚠️ Please eject manually"
-            if fail == 0:
-                print(f"     ✅ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied ({ej})")
+            if fail == 0 and res.get("verified"):
+                print(f"     ✅ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied & confirmed on drive ({ej})")
                 total_success += 1
             else:
-                print(f"     ❌ {drv:<6} — {succ}/{len(SONG_LIST)} copied, {fail} failed ({ej})")
+                print(f"     ❌ {drv:<6} — {succ}/{len(SONG_LIST)} copied, {fail} issue(s) ({ej})")
                 if res.get("failed_files"):
-                    print(f"        Failed files: {', '.join(res['failed_files'])}")
+                    print(f"        Issues: {', '.join(res['failed_files'])}")
                 total_failed += 1
 
         print()
