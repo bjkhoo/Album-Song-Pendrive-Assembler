@@ -60,7 +60,9 @@ _print_lock = threading.Lock()
 def log(msg="", prefix=None):
     """Thread-safe logging helper with optional drive prefix."""
     with _print_lock:
-        if prefix:
+        if not msg:
+            print()
+        elif prefix:
             print(f"  [{prefix}] {msg}")
         else:
             print(f"  {msg}")
@@ -429,6 +431,7 @@ def verify_drive_contents(source_dir, drive, song_list, prefix=None):
     Returns (is_verified, missing_files, mismatched_files).
     """
     pfx = prefix or drive.rstrip("\\").rstrip("/")
+    log()
     log(f"🔍 Auditing drive contents: checking all {len(song_list)} files on {drive}...", prefix=pfx)
 
     missing = []
@@ -457,7 +460,6 @@ def verify_drive_contents(source_dir, drive, song_list, prefix=None):
             missing.append(filename)
 
     if not missing and not mismatched:
-        log(f"🔍 Audit PASSED: all {len(song_list)} files confirmed present on {drive}! ✅", prefix=pfx)
         return True, [], []
     else:
         if missing:
@@ -495,7 +497,7 @@ def process_single_drive(drive, source_dir, song_list):
                 failed += 1
 
     if failed == 0 and is_verified:
-        log(f"✅ All {success}/{len(song_list)} songs verified on {drive}! (⏳ Waiting for other drives to finish...)", prefix=pfx)
+        log(f"✅ All {success}/{len(song_list)} songs verified on {drive}!", prefix=pfx)
     else:
         log(f"⚠️ Copied {success}/{len(song_list)} songs, {failed} issue(s) on {drive}. (⏳ Waiting for other drives...)", prefix=pfx)
 
