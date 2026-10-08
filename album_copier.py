@@ -664,10 +664,6 @@ def main():
 
         # --- Synchronized Safe Eject: ALL DRIVES EJECTED TOGETHER ---
         print()
-        print("  " + "═" * 58)
-        print("  ⏏️ ALL DRIVES FINISHED! Safely ejecting all drives together...")
-        print("  " + "═" * 58)
-
         for res in sorted(batch_results, key=lambda x: x["drive"]):
             drv = res["drive"]
             ej = safe_eject(drv, prefix=drv.rstrip("\\").rstrip("/"))
