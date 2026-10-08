@@ -71,15 +71,11 @@ jobs:
       - name: Create or update Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0
-          name: "v2.0 — Multi-Drive Simultaneous Parallel Support"
+          tag_name: v3.0
+          name: "v3.0 — Universal Audio Support & Physical Disk Audit"
           body: |
-            ## ⚡ What's New in v2.0
-            - **Multi-Drive Parallel Copying**: Plug in 4, 8, 10+ pen drives via an external USB hub and copy to all of them at once!
-            - **Real-Time Drive Tracking**: Clean, thread-safe progress logging for each drive letter (`[E:]`, `[F:]`, etc.).
-            - **Batch Summaries**: Status report for every drive after each batch.
-            - **Automatic Safe-Eject**: Automatically safely ejects each drive upon completion so you can immediately unplug it.
-
+            ## ⚡ What's New in v3.0
+            - **Universal Audio Format Support**: Automatically detects and copies songs in any audio format (`.mp3`, `.wav`, `.flac`, `.m4a`, etc.) matching track titles.
             ---
 
             ## 📥 Download
@@ -93,7 +89,7 @@ jobs:
             - **[ZIP Archive] `album_copier_mac.zip`**
 
             ---
-            Place the file next to your `album_source/` folder containing the 10 MP3 files, then run it.
+            Place the file next to your `album_source/` folder containing the 10 album songs, then run it.
           files: |
             ./release/album_copier.exe
             ./release/album_copier_windows.zip

@@ -41,17 +41,53 @@ DRIVE_LABEL = "PDW Album"
 SOURCE_FOLDER = "album_source"
 
 SONG_LIST = [
-    "01 稻、树林和风.mp3",
-    "02 Thankfulness.mp3",
-    "03 满月.mp3",
-    "04 我苦我乐我转转念.mp3",
-    "05 含羞草的闪亮.mp3",
-    "06 初心.mp3",
-    "07 幸福答卷.mp3",
-    "08 蝴蝶的呢喃.mp3",
-    "09 拥抱无常.mp3",
-    "10 六时·尔时.mp3",
+    "01 稻、树林和风",
+    "02 Thankfulness",
+    "03 满月",
+    "04 我苦我乐我转转念",
+    "05 含羞草的闪亮",
+    "06 初心",
+    "07 幸福答卷",
+    "08 蝴蝶的呢喃",
+    "09 拥抱无常",
+    "10 六时·尔时",
 ]
+
+SUPPORTED_AUDIO_EXTS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
+
+
+def resolve_album_songs(source_dir):
+    """
+    Find matching audio files in source_dir for each track title.
+    Requires exact base name match (extension can be anything: .mp3, .wav, .flac, etc.).
+    Returns (resolved_song_filenames, missing_track_titles).
+    """
+    if not os.path.isdir(source_dir):
+        return [], list(SONG_LIST)
+
+    try:
+        files = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
+    except Exception:
+        return [], list(SONG_LIST)
+
+    resolved = []
+    missing = []
+
+    for title in SONG_LIST:
+        matched_file = None
+        # Exact base name match (extension can be anything: .mp3, .wav, .flac, etc.)
+        for f in sorted(files):
+            base, ext = os.path.splitext(f)
+            if ext.lower() in SUPPORTED_AUDIO_EXTS and base.strip().lower() == title.strip().lower():
+                matched_file = f
+                break
+
+        if matched_file:
+            resolved.append(matched_file)
+        else:
+            missing.append(title)
+
+    return resolved, missing
 
 # Thread safety lock for console output
 _print_lock = threading.Lock()
@@ -522,7 +558,7 @@ def print_header():
     print()
     print("=" * 60)
     print(f"  {ALBUM_NAME}")
-    print(f"  Album Song Pendrive Assembler (Multi-Drive Parallel Mode)")
+    print(f"  Album Song Pendrive Assembler v3.0 (Multi-Drive Parallel Mode)")
     print(f"  Computer: {computer} | OS: {os_name}")
     print("=" * 60)
     print()
@@ -548,20 +584,20 @@ def main():
             print()
             continue
 
-        missing = [s for s in SONG_LIST if not os.path.isfile(os.path.join(source_dir, s))]
-        if missing:
-            print(f"  ⚠️ {len(missing)} song(s) missing from '{SOURCE_FOLDER}':")
-            for m in missing:
+        resolved_songs, missing_tracks = resolve_album_songs(source_dir)
+        if missing_tracks:
+            print(f"  ⚠️ {len(missing_tracks)} song(s) missing from '{SOURCE_FOLDER}':")
+            for m in missing_tracks:
                 print(f"     - {m}")
             print()
-            print(f"     Please place all {len(SONG_LIST)} MP3 files in the '{SOURCE_FOLDER}' folder.")
+            print(f"     (Names must match track titles exactly. Any format accepted: .mp3, .wav, .flac, etc.)")
             user_input = input("     Press Enter to scan again (Q to quit): ").strip().upper()
             if user_input == "Q":
                 return
             print()
             continue
 
-        print(f"  ✅ All {len(SONG_LIST)} songs verified in '{SOURCE_FOLDER}'. Ready!\n")
+        print(f"  ✅ All {len(resolved_songs)} songs verified in '{SOURCE_FOLDER}'. Ready!\n")
         break
 
     # --- Main loop ---
@@ -646,7 +682,7 @@ def main():
         batch_results = []
         with ThreadPoolExecutor(max_workers=len(selected_drives)) as executor:
             future_to_drive = {
-                executor.submit(process_single_drive, drive, source_dir, SONG_LIST): drive
+                executor.submit(process_single_drive, drive, source_dir, resolved_songs): drive
                 for drive in selected_drives
             }
             for future in as_completed(future_to_drive):
@@ -658,8 +694,9 @@ def main():
                     batch_results.append({
                         "drive": drv,
                         "success": 0,
-                        "failed": len(SONG_LIST),
-                        "failed_files": SONG_LIST,
+                        "failed": len(resolved_songs),
+                        "failed_files": resolved_songs,
+                        "verified": False,
                         "ejected": False,
                         "error": str(exc),
                     })
@@ -681,10 +718,10 @@ def main():
             fail = res["failed"]
             ej = "⏏️ Ejected" if res.get("ejected") else "⚠️ Please eject manually"
             if fail == 0 and res.get("verified"):
-                print(f"     ✅ {drv:<6} — {succ}/{len(SONG_LIST)} songs copied & confirmed on drive ({ej})")
+                print(f"     ✅ {drv:<6} — {succ}/{len(resolved_songs)} songs copied & confirmed on drive ({ej})")
                 total_success += 1
             else:
-                print(f"     ❌ {drv:<6} — {succ}/{len(SONG_LIST)} copied, {fail} issue(s) ({ej})")
+                print(f"     ❌ {drv:<6} — {succ}/{len(resolved_songs)} copied, {fail} issue(s) ({ej})")
                 if res.get("failed_files"):
                     print(f"        Issues: {', '.join(res['failed_files'])}")
                 total_failed += 1
