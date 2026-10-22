@@ -39,6 +39,7 @@ if sys.platform == "win32":
 ALBUM_NAME = "《稻、树林和风》原创专辑"
 DRIVE_LABEL = "PDW Album"
 SOURCE_FOLDER = "album_source"
+WAV_FOLDER_NAME = "WAV"
 
 SONG_LIST = [
     "01 稻、树林和风",
@@ -53,20 +54,18 @@ SONG_LIST = [
     "10 六时·尔时",
 ]
 
-SUPPORTED_AUDIO_EXTS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg", ".wma"}
 
-
-def resolve_album_songs(source_dir):
+def resolve_format_songs(directory, target_ext):
     """
-    Find matching audio files in source_dir for each track title.
-    Requires exact base name match (extension can be anything: .mp3, .wav, .flac, etc.).
-    Returns (resolved_song_filenames, missing_track_titles).
+    Find matching audio files in directory for each track in SONG_LIST.
+    Requires exact base name match and target extension.
+    Returns (resolved_filenames, missing_track_titles).
     """
-    if not os.path.isdir(source_dir):
+    if not os.path.isdir(directory):
         return [], list(SONG_LIST)
 
     try:
-        files = [f for f in os.listdir(source_dir) if os.path.isfile(os.path.join(source_dir, f))]
+        files = [f for f in os.listdir(directory) if os.path.isfile(os.path.join(directory, f))]
     except Exception:
         return [], list(SONG_LIST)
 
@@ -75,10 +74,9 @@ def resolve_album_songs(source_dir):
 
     for title in SONG_LIST:
         matched_file = None
-        # Exact base name match (extension can be anything: .mp3, .wav, .flac, etc.)
         for f in sorted(files):
             base, ext = os.path.splitext(f)
-            if ext.lower() in SUPPORTED_AUDIO_EXTS and base.strip().lower() == title.strip().lower():
+            if ext.lower() == target_ext.lower() and base.strip().lower() == title.strip().lower():
                 matched_file = f
                 break
 
@@ -88,6 +86,72 @@ def resolve_album_songs(source_dir):
             missing.append(title)
 
     return resolved, missing
+
+
+def build_copy_tasks(source_dir):
+    """
+    Scans source_dir for MP3 songs in root and WAV songs in WAV_FOLDER_NAME subfolder.
+    Returns (tasks, has_wav, errors).
+    tasks is a list of dicts:
+        {
+            "src": absolute_source_path,
+            "dest_rel": relative_path_on_drive (e.g. "01.mp3" or "WAV/01.wav"),
+            "display": display_name,
+            "category": "MP3" or "WAV"
+        }
+    """
+    errors = []
+
+    # 1. Resolve MP3 in source_dir root
+    mp3_files, missing_mp3 = resolve_format_songs(source_dir, ".mp3")
+    if missing_mp3:
+        err_lines = [f"Missing {len(missing_mp3)} MP3 song(s) in '{SOURCE_FOLDER}/':"]
+        for m in missing_mp3:
+            err_lines.append(f"     - {m}.mp3")
+        errors.append("\n".join(err_lines))
+
+    # 2. Check if WAV subfolder exists and has WAV files
+    wav_dir = os.path.join(source_dir, WAV_FOLDER_NAME)
+    has_wav = False
+    wav_files = []
+
+    if os.path.isdir(wav_dir):
+        try:
+            wav_candidates = [f for f in os.listdir(wav_dir) if f.lower().endswith(".wav")]
+        except Exception:
+            wav_candidates = []
+
+        if wav_candidates:
+            has_wav = True
+            wav_files, missing_wav = resolve_format_songs(wav_dir, ".wav")
+            if missing_wav:
+                err_lines = [f"Missing {len(missing_wav)} WAV song(s) in '{SOURCE_FOLDER}/{WAV_FOLDER_NAME}/':"]
+                for m in missing_wav:
+                    err_lines.append(f"     - {m}.wav")
+                errors.append("\n".join(err_lines))
+
+    if errors:
+        return [], False, errors
+
+    tasks = []
+    for f in mp3_files:
+        tasks.append({
+            "src": os.path.join(source_dir, f),
+            "dest_rel": f,
+            "display": f,
+            "category": "MP3"
+        })
+
+    if has_wav:
+        for f in wav_files:
+            tasks.append({
+                "src": os.path.join(wav_dir, f),
+                "dest_rel": os.path.join(WAV_FOLDER_NAME, f),
+                "display": f"{WAV_FOLDER_NAME}/{f}",
+                "category": "WAV"
+            })
+
+    return tasks, has_wav, []
 
 # Thread safety lock for console output
 _print_lock = threading.Lock()
@@ -393,29 +457,35 @@ def clean_drive(drive, prefix=None):
 #  FILE COPY
 # ============================================================
 
-def copy_songs_to_drive(source_dir, drive, song_list, prefix=None):
+def copy_songs_to_drive(drive, copy_tasks, prefix=None):
     """
-    Copy all songs from source_dir to the root of the pen drive.
+    Copy all songs according to copy_tasks to the pen drive.
     Returns (success_count, fail_count, failed_files).
     """
     pfx = prefix or drive.rstrip("\\").rstrip("/")
     success_count = 0
     fail_count = 0
     failed_files = []
-    total = len(song_list)
+    total = len(copy_tasks)
 
-    for i, filename in enumerate(song_list, 1):
-        source_path = os.path.join(source_dir, filename)
-        dest_path = os.path.join(drive, filename)
+    for i, task in enumerate(copy_tasks, 1):
+        source_path = task["src"]
+        dest_rel = task["dest_rel"]
+        display_name = task["display"]
+        dest_path = os.path.join(drive, dest_rel)
 
         try:
             if not os.path.isfile(source_path):
-                log(f"[{i:>2}/{total}] ❌ {filename} — File not found in source folder", prefix=pfx)
+                log(f"[{i:>2}/{total}] ❌ {display_name} — Source file not found", prefix=pfx)
                 fail_count += 1
-                failed_files.append(filename)
+                failed_files.append(display_name)
                 continue
 
             source_size = os.path.getsize(source_path)
+
+            dest_dir = os.path.dirname(dest_path)
+            if dest_dir and not os.path.exists(dest_dir):
+                os.makedirs(dest_dir, exist_ok=True)
 
             # Copy the file (preserves metadata like timestamps)
             shutil.copy2(source_path, dest_path)
@@ -423,43 +493,43 @@ def copy_songs_to_drive(source_dir, drive, song_list, prefix=None):
             # Verify: check the destination file size matches
             dest_size = os.path.getsize(dest_path)
             if dest_size != source_size:
-                log(f"[{i:>2}/{total}] ⚠️ {filename} — Size mismatch! (expected {format_size(source_size)}, got {format_size(dest_size)})", prefix=pfx)
+                log(f"[{i:>2}/{total}] ⚠️ {display_name} — Size mismatch! (expected {format_size(source_size)}, got {format_size(dest_size)})", prefix=pfx)
                 fail_count += 1
-                failed_files.append(filename)
+                failed_files.append(display_name)
             else:
-                log(f"[{i:>2}/{total}] ✅ {filename} ({format_size(source_size)})", prefix=pfx)
+                log(f"[{i:>2}/{total}] ✅ {display_name} ({format_size(source_size)})", prefix=pfx)
                 success_count += 1
 
         except PermissionError:
-            log(f"[{i:>2}/{total}] ❌ {filename} — Permission denied (drive may be write-protected)", prefix=pfx)
+            log(f"[{i:>2}/{total}] ❌ {display_name} — Permission denied (drive may be write-protected)", prefix=pfx)
             fail_count += 1
-            failed_files.append(filename)
+            failed_files.append(display_name)
         except OSError as e:
             if "No space left" in str(e) or "not enough space" in str(e).lower():
-                log(f"[{i:>2}/{total}] ❌ {filename} — No space left on drive!", prefix=pfx)
+                log(f"[{i:>2}/{total}] ❌ {display_name} — No space left on drive!", prefix=pfx)
                 fail_count += 1
-                failed_files.append(filename)
+                failed_files.append(display_name)
                 log("🛑 Drive full — stopping copy for this drive.", prefix=pfx)
                 break
             elif "device" in str(e).lower() or "removed" in str(e).lower():
-                log(f"[{i:>2}/{total}] ❌ {filename} — Drive disconnected!", prefix=pfx)
+                log(f"[{i:>2}/{total}] ❌ {display_name} — Drive disconnected!", prefix=pfx)
                 fail_count += 1
-                failed_files.append(filename)
+                failed_files.append(display_name)
                 log("🛑 Drive disconnected — stopping copy for this drive.", prefix=pfx)
                 break
             else:
-                log(f"[{i:>2}/{total}] ❌ {filename} — Error: {e}", prefix=pfx)
+                log(f"[{i:>2}/{total}] ❌ {display_name} — Error: {e}", prefix=pfx)
                 fail_count += 1
-                failed_files.append(filename)
+                failed_files.append(display_name)
         except Exception as e:
-            log(f"[{i:>2}/{total}] ❌ {filename} — Unexpected error: {e}", prefix=pfx)
+            log(f"[{i:>2}/{total}] ❌ {display_name} — Unexpected error: {e}", prefix=pfx)
             fail_count += 1
-            failed_files.append(filename)
+            failed_files.append(display_name)
 
     return success_count, fail_count, failed_files
 
 
-def verify_drive_contents(source_dir, drive, song_list, prefix=None):
+def verify_drive_contents(drive, copy_tasks, prefix=None):
     """
     Perform a complete post-copy audit directly on the pen drive.
     Reads the drive to verify that all songs exist, are readable,
@@ -468,32 +538,28 @@ def verify_drive_contents(source_dir, drive, song_list, prefix=None):
     """
     pfx = prefix or drive.rstrip("\\").rstrip("/")
     log()
-    log(f"🔍 Auditing drive contents: checking all {len(song_list)} files on {drive}...", prefix=pfx)
+    log(f"🔍 Auditing drive contents: checking all {len(copy_tasks)} files on {drive}...", prefix=pfx)
 
     missing = []
     mismatched = []
 
-    try:
-        drive_files = set(os.listdir(drive))
-    except Exception as e:
-        log(f"❌ Could not read drive directory: {e}", prefix=pfx)
-        return False, list(song_list), []
+    for task in copy_tasks:
+        dest_rel = task["dest_rel"]
+        display_name = task["display"]
+        dest_path = os.path.join(drive, dest_rel)
+        source_path = task["src"]
 
-    for filename in song_list:
-        dest_path = os.path.join(drive, filename)
-        source_path = os.path.join(source_dir, filename)
-
-        if filename not in drive_files or not os.path.isfile(dest_path):
-            missing.append(filename)
+        if not os.path.isfile(dest_path):
+            missing.append(display_name)
             continue
 
         try:
             dest_size = os.path.getsize(dest_path)
             source_size = os.path.getsize(source_path)
             if dest_size != source_size or dest_size == 0:
-                mismatched.append(filename)
+                mismatched.append(display_name)
         except Exception:
-            missing.append(filename)
+            missing.append(display_name)
 
     if not missing and not mismatched:
         return True, [], []
@@ -505,7 +571,7 @@ def verify_drive_contents(source_dir, drive, song_list, prefix=None):
         return False, missing, mismatched
 
 
-def process_single_drive(drive, source_dir, song_list):
+def process_single_drive(drive, copy_tasks, has_wav):
     """
     Wipes, renames, copies songs, and verifies drive contents.
     Does NOT eject here — all drives are safely ejected together at the end.
@@ -521,10 +587,10 @@ def process_single_drive(drive, source_dir, song_list):
     rename_drive(drive, DRIVE_LABEL, prefix=pfx)
 
     # 3. Copy songs
-    success, failed, failed_files = copy_songs_to_drive(source_dir, drive, song_list, prefix=pfx)
+    success, failed, failed_files = copy_songs_to_drive(drive, copy_tasks, prefix=pfx)
 
-    # 4. Post-copy audit: Read the drive to verify all 10 files actually exist on disk
-    is_verified, missing_audit, mismatch_audit = verify_drive_contents(source_dir, drive, song_list, prefix=pfx)
+    # 4. Post-copy audit: Read the drive to verify all files actually exist on disk
+    is_verified, missing_audit, mismatch_audit = verify_drive_contents(drive, copy_tasks, prefix=pfx)
 
     if not is_verified:
         for f in missing_audit + mismatch_audit:
@@ -532,14 +598,16 @@ def process_single_drive(drive, source_dir, song_list):
                 failed_files.append(f)
                 failed += 1
 
+    total_tasks = len(copy_tasks)
+    mode_desc = "10 MP3 + 10 WAV" if has_wav else f"{total_tasks} MP3"
     if failed == 0 and is_verified:
-        log(f"✅ All {success}/{len(song_list)} songs verified on {drive}!", prefix=pfx)
+        log(f"✅ All {success}/{total_tasks} songs ({mode_desc}) verified on {drive}!", prefix=pfx)
     else:
-        log(f"⚠️ Copied {success}/{len(song_list)} songs, {failed} issue(s) on {drive}. (⏳ Waiting for other drives...)", prefix=pfx)
+        log(f"⚠️ Copied {success}/{total_tasks} songs, {failed} issue(s) on {drive}. (⏳ Waiting for other drives...)", prefix=pfx)
 
     return {
         "drive": drive,
-        "success": success if is_verified else max(0, len(song_list) - len(failed_files)),
+        "success": success if is_verified else max(0, total_tasks - len(failed_files)),
         "failed": failed,
         "failed_files": failed_files,
         "verified": is_verified,
@@ -558,7 +626,7 @@ def print_header():
     print()
     print("=" * 60)
     print(f"  {ALBUM_NAME}")
-    print(f"  Album Song Pendrive Assembler v3.0 (Multi-Drive Parallel Mode)")
+    print(f"  Album Song Pendrive Assembler v4.0 (Option 3: Root MP3 + WAV Subfolder)")
     print(f"  Computer: {computer} | OS: {os_name}")
     print("=" * 60)
     print()
@@ -584,20 +652,29 @@ def main():
             print()
             continue
 
-        resolved_songs, missing_tracks = resolve_album_songs(source_dir)
-        if missing_tracks:
-            print(f"  ⚠️ {len(missing_tracks)} song(s) missing from '{SOURCE_FOLDER}':")
-            for m in missing_tracks:
-                print(f"     - {m}")
+        copy_tasks, has_wav, errors = build_copy_tasks(source_dir)
+        if errors:
+            for err in errors:
+                print(f"  ⚠️ {err}")
             print()
-            print(f"     (Names must match track titles exactly. Any format accepted: .mp3, .wav, .flac, etc.)")
             user_input = input("     Press Enter to scan again (Q to quit): ").strip().upper()
             if user_input == "Q":
                 return
             print()
             continue
 
-        print(f"  ✅ All {len(resolved_songs)} songs verified in '{SOURCE_FOLDER}'. Ready!\n")
+        mp3_count = sum(1 for t in copy_tasks if t["category"] == "MP3")
+        wav_count = sum(1 for t in copy_tasks if t["category"] == "WAV")
+
+        print(f"  📁 Found '{SOURCE_FOLDER}':")
+        print(f"     - MP3 (Root): {mp3_count}/{len(SONG_LIST)} songs verified ✅")
+        if has_wav:
+            print(f"     - WAV ('{WAV_FOLDER_NAME}/' Subfolder): {wav_count}/{len(SONG_LIST)} songs verified ✅")
+            print(f"  🎯 Mode: Option 3 (Root MP3 + WAV Subfolder) — Total {len(copy_tasks)} files per drive")
+        else:
+            print(f"     - WAV: None detected ('{WAV_FOLDER_NAME}/' folder not found or empty)")
+            print(f"  🎯 Mode: Pure MP3 Mode — Total {len(copy_tasks)} files per drive")
+        print()
         break
 
     # --- Main loop ---
@@ -682,7 +759,7 @@ def main():
         batch_results = []
         with ThreadPoolExecutor(max_workers=len(selected_drives)) as executor:
             future_to_drive = {
-                executor.submit(process_single_drive, drive, source_dir, resolved_songs): drive
+                executor.submit(process_single_drive, drive, copy_tasks, has_wav): drive
                 for drive in selected_drives
             }
             for future in as_completed(future_to_drive):
@@ -694,8 +771,8 @@ def main():
                     batch_results.append({
                         "drive": drv,
                         "success": 0,
-                        "failed": len(resolved_songs),
-                        "failed_files": resolved_songs,
+                        "failed": len(copy_tasks),
+                        "failed_files": [t["display"] for t in copy_tasks],
                         "verified": False,
                         "ejected": False,
                         "error": str(exc),
@@ -712,16 +789,18 @@ def main():
         print()
         print("  " + "═" * 58)
         print("  📊 BATCH RESULTS:")
+        total_songs = len(copy_tasks)
+        mode_desc = "10 MP3 + 10 WAV" if has_wav else f"{total_songs} MP3"
         for res in sorted(batch_results, key=lambda x: x["drive"]):
             drv = res["drive"]
             succ = res["success"]
             fail = res["failed"]
             ej = "⏏️ Ejected" if res.get("ejected") else "⚠️ Please eject manually"
             if fail == 0 and res.get("verified"):
-                print(f"     ✅ {drv:<6} — {succ}/{len(resolved_songs)} songs copied & confirmed on drive ({ej})")
+                print(f"     ✅ {drv:<6} — {succ}/{total_songs} songs verified on drive ({mode_desc}) ({ej})")
                 total_success += 1
             else:
-                print(f"     ❌ {drv:<6} — {succ}/{len(resolved_songs)} copied, {fail} issue(s) ({ej})")
+                print(f"     ❌ {drv:<6} — {succ}/{total_songs} copied, {fail} issue(s) ({ej})")
                 if res.get("failed_files"):
                     print(f"        Issues: {', '.join(res['failed_files'])}")
                 total_failed += 1

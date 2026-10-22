@@ -71,11 +71,15 @@ jobs:
       - name: Create or update Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v3.0
-          name: "v3.0 — Universal Audio Support & Physical Disk Audit"
+          tag_name: v4.0
+          name: "v4.0 — Dual Format (Root MP3 + WAV Subfolder)"
           body: |
-            ## ⚡ What's New in v3.0
-            - **Universal Audio Format Support**: Automatically detects and copies songs in any audio format (`.mp3`, `.wav`, `.flac`, `.m4a`, etc.) matching track titles.
+            ## ⚡ What's New in v4.0
+            - **Dual-Format USB Layout**:
+              - **Root Directory**: 10 MP3 files for instant plug-and-play compatibility on all car stereos and portable speakers without folder navigation.
+              - **WAV/ Subfolder**: 10 lossless CD-quality WAV files for PC, DAP, and audiophile listening.
+            - **Smart Auto-Detection & Fallback**: Automatically recognizes `album_source/WAV/`. If omitted, seamlessly runs in Pure MP3 mode.
+            - **Comprehensive Multi-Directory Audit**: Verifies all files (both root and `WAV/` folder) directly on disk before synchronized safe ejection.
             ---
 
             ## 📥 Download

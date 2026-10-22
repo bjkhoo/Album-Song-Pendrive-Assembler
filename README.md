@@ -50,7 +50,9 @@ Go to the [**Releases page**](../../releases/latest) and download the appropriat
 * **Mac**: Download `album_copier_mac` (or extract `album_copier_mac.zip`).
 
 ### 2. Prepare the Song Folder
-Create an `album_source/` folder **in the same directory** as the executable, and place all 10 MP3 files inside it.
+Create an `album_source/` folder **in the same directory** as the executable.
+* Place the 10 MP3 files directly inside `album_source/` (for car & speaker playback).
+* Place the 10 lossless WAV files inside `album_source/WAV/` (for PC & audiophiles).
 
 Your folder structure should look like this:
 ```text
@@ -66,8 +68,22 @@ Album-Assembler/
     ├── 07 幸福答卷.mp3
     ├── 08 蝴蝶的呢喃.mp3
     ├── 09 拥抱无常.mp3
-    └── 10 六时·尔时.mp3
+    ├── 10 六时·尔时.mp3
+    │
+    └── WAV/
+        ├── 01 稻、树林和风.wav
+        ├── 02 Thankfulness.wav
+        ├── 03 满月.wav
+        ├── 04 我苦我乐我转转念.wav
+        ├── 05 含羞草的闪亮.wav
+        ├── 06 初心.wav
+        ├── 07 幸福答卷.wav
+        ├── 08 蝴蝶的呢喃.wav
+        ├── 09 拥抱无常.wav
+        └── 10 六时·尔时.wav
 ```
+
+*(Note: If the `WAV/` subfolder is omitted, the program will automatically run in Pure MP3 mode.)*
 
 ### 3. Run the Program
 * **Windows**: Double-click `album_copier.exe`.

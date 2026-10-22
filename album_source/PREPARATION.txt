@@ -1,23 +1,42 @@
 ========================================================
-  PREPARATION GUIDE / 准备指南
+  PREPARATION GUIDE / 准备指南 (Option 3 双版本)
   《稻、树林和风》原创专辑
   "The Paddy Fields, the Forests and the Wind"
 ========================================================
 
-Before running album_copier.py, make sure all 10 MP3 files
-are placed in this folder (album_source/) with these
-EXACT file names:
+Before running album_copier.py, prepare your files as follows:
 
-  01 稻、树林和风.mp3
-  02 Thankfulness.mp3
-  03 满月.mp3
-  04 我苦我乐我转转念.mp3
-  05 含羞草的闪亮.mp3
-  06 初心.mp3
-  07 幸福答卷.mp3
-  08 蝴蝶的呢喃.mp3
-  09 拥抱无常.mp3
-  10 六时·尔时.mp3
+1. [MP3 版本 - 10 首]
+   Place all 10 MP3 files directly in this folder (album_source/):
+
+   01 稻、树林和风.mp3
+   02 Thankfulness.mp3
+   03 满月.mp3
+   04 我苦我乐我转转念.mp3
+   05 含羞草的闪亮.mp3
+   06 初心.mp3
+   07 幸福答卷.mp3
+   08 蝴蝶的呢喃.mp3
+   09 拥抱无常.mp3
+   10 六时·尔时.mp3
+
+2. [WAV 无损版本 - 10 首]
+   Place all 10 WAV files inside the WAV/ subfolder (album_source/WAV/):
+
+   album_source/WAV/
+   ├── 01 稻、树林和风.wav
+   ├── 02 Thankfulness.wav
+   ├── 03 满月.wav
+   ├── 04 我苦我乐我转转念.wav
+   ├── 05 含羞草的闪亮.wav
+   ├── 06 初心.wav
+   ├── 07 幸福答卷.wav
+   ├── 08 蝴蝶的呢喃.wav
+   ├── 09 拥抱无常.wav
+   └── 10 六时·尔时.wav
+
+   (Note: If the WAV/ folder does not exist or has no files, the program
+    will automatically run in Pure MP3 mode.)
 
 --------------------------------------------------------
   IMPORTANT NOTES / 重要提示
@@ -27,29 +46,19 @@ EXACT file names:
    (including spaces, Chinese characters, and punctuation)
 
 2. The 2-digit prefix (01, 02, ..., 10) ensures correct
-   playback order on car players and Bluetooth speakers.
+   playback order on car players and Hi-Fi equipment.
 
-3. Do NOT put files in subfolders — they must be placed
-   directly in this album_source/ folder.
-
-4. If your original files have different names, rename
-   them to match the list above before running the script.
-
-   For example, if your file is named:
-     稻、树林和风.mp3
-   Rename it to:
-     01 稻、树林和风.mp3
-
-5. Make sure all 10 files are present. The script will
-   warn you if any files are missing.
+3. On the USB Pen Drive, it will produce:
+   - Root: 10 MP3 songs (Plug-and-play for car audio & speakers)
+   - WAV/ folder: 10 lossless WAV songs (For PC & audiophiles)
 
 --------------------------------------------------------
   QUICK CHECKLIST / 快速检查
 --------------------------------------------------------
 
-  [ ] All 10 MP3 files are in this folder
-  [ ] File names match exactly (copy-paste from above)
-  [ ] No subfolders — files are directly here
+  [ ] All 10 MP3 files are directly in album_source/
+  [ ] All 10 WAV files are in album_source/WAV/
+  [ ] File names match exactly (01 to 10)
   [ ] album_copier.py is in the parent folder
 
 ========================================================
